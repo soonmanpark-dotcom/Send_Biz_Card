@@ -40,13 +40,6 @@ def kakao_skill():
 
     print(f"[수신] {utterance}")
 
-    # 트리거 문구 확인
-    if TRIGGER not in utterance:
-        return jsonify(_kakao_text(
-            f"'{TRIGGER}' 문구와 이메일 주소를 함께 입력해 주세요.\n"
-            f"예) hong@example.com {TRIGGER}"
-        ))
-
     # 이메일 주소 추출
     match = EMAIL_PATTERN.search(utterance)
     if not match:
