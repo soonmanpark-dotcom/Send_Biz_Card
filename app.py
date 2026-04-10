@@ -1,6 +1,7 @@
 import re
 import os
 import yaml
+import threading
 from flask import Flask, request, jsonify
 from email_sender import EmailSender
 
@@ -52,13 +53,14 @@ def kakao_skill():
     email_addr = match.group()
     print(f"[발송 시도] → {email_addr}")
 
-    if sender.send(email_addr):
-        reply = f"✅ {email_addr} 으로 명함을 보냈습니다."
-        print(f"[발송 완료] → {email_addr}")
-    else:
-        reply = f"❌ 이메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요."
-        print(f"[발송 실패] → {email_addr}")
+    # 백그라운드에서 이메일 발송 (카카오 5초 타임아웃 방지)
+    def send_async():
+        ok = sender.send(email_addr)
+        print(f"[발송 {'완료' if ok else '실패'}] → {email_addr}")
 
+    threading.Thread(target=send_async, daemon=True).start()
+
+    reply = f"📨 {email_addr} 으로 명함을 발송 중입니다. 잠시 후 이메일을 확인해 주세요."
     return jsonify(_kakao_text(reply))
 
 
