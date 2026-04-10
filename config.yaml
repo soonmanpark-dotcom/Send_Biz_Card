@@ -1,0 +1,19 @@
+card:
+  name: "박순만 / Soonmahn Park"
+  title: "수석연구원"
+  company: "한국보건산업진흥원 (오송 본원)"
+  department: "바이오헬스 정책연구센터"
+  phone: "010-5145-6239"
+  kakao_id: "soonman22"
+  email: "soonman.park@gmail.com"
+
+gmail:
+  sender_address: "soonman.park@gmail.com"
+  app_password: ""  # 환경변수 GMAIL_APP_PASSWORD 로 설정
+
+mail:
+  subject: "박순만 연락처 정보입니다"
+
+bot:
+  trigger_phrase: "내 명함 정보 보내줘"
+  port: 5000

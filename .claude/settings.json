@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:4040/api/tunnels)",
+      "Bash(curl -s https://dating-parakeet-landowner.ngrok-free.dev/health -H \"ngrok-skip-browser-warning: true\")"
+    ]
+  }
+}
