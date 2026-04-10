@@ -51,7 +51,8 @@ def kakao_skill():
     match = EMAIL_PATTERN.search(utterance)
     if not match:
         return jsonify(_kakao_text(
-            "이메일 주소를 찾을 수 없습니다.\n"
+            "📧 이메일 주소가 입력되지 않았습니다.\n\n"
+            "이메일 주소를 함께 입력해 주세요.\n"
             f"예) hong@example.com {TRIGGER}"
         ))
 
