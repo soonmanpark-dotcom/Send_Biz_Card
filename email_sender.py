@@ -5,6 +5,7 @@ import urllib.error
 import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from html import escape
 
 # Brevo 앞단 Cloudflare 가 기본 Python-urllib User-Agent 를 1010 으로 차단하므로 직접 지정한다.
 USER_AGENT = "SendBizCard/1.0"
@@ -28,7 +29,15 @@ class EmailSender:
         return "brevo" if self._api_key else "smtp"
 
     def _build_html(self) -> str:
-        c = self.card
+        c = {k: (v if isinstance(v, list) else escape(str(v))) for k, v in self.card.items()}
+        # 이름 아래 소속·주소 줄. 첫 줄만 이름과 간격을 준다.
+        sub_lines = "".join(
+            '<div style="font-size:13px;color:#333;{margin}">{text}</div>'.format(
+                margin="margin-top:4px;" if i == 0 else "",
+                text=escape(str(line)),
+            )
+            for i, line in enumerate(self.card.get("lines") or [])
+        )
         return f"""<!DOCTYPE html>
 <html>
 <body style="margin:0;padding:20px;font-family:'Malgun Gothic',Arial,sans-serif;background:#f4f4f4;">
@@ -47,8 +56,7 @@ class EmailSender:
     <tr>
       <td style="background:#FEE500;padding:20px 28px;">
         <div style="font-size:26px;font-weight:bold;color:#1a1a1a;letter-spacing:-0.5px;">{c['name']}</div>
-        <div style="font-size:13px;color:#333;margin-top:4px;">{c['title']}, {c['department']}</div>
-        <div style="font-size:13px;color:#333;">{c['company']}</div>
+        {sub_lines}
       </td>
     </tr>
     <tr>

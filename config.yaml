@@ -1,8 +1,10 @@
 card:
   name: "박순만 / Soonmahn Park"
-  title: "수석연구원"
-  company: "한국보건산업진흥원 (오송 본원)"
-  department: "바이오헬스 정책연구센터"
+  # 이름 아래에 한 줄씩 표시된다. 줄을 늘리거나 줄이려면 이 목록만 고치면 된다.
+  lines:
+    - "연세대학교 의과대학 의료기기산업학과 부교수"
+    - "서울시 강남구 언주로63길 20"
+    - "강남세브란스병원 교수연구동 지하 1층"
   phone: "010-5145-6239"
   kakao_id: "soonman22"
   email: "soonman.park@gmail.com"
