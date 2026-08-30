@@ -20,8 +20,10 @@ TRIGGER = config["bot"]["trigger_phrase"]
 PORT = int(os.environ.get("PORT", config["bot"]["port"]))
 
 # ── 스킬 서버 인증 ────────────────────────────────────────────────────────────
-# 공개 URL 은 누구나 호출할 수 있으므로, 카카오 스킬 설정에서 아래 헤더를 붙여 보내고
-# 서버가 그 값을 검증한다. 환경변수가 비어 있으면 검증을 건너뛴다(로컬 개발용).
+# 공개 URL 은 누구나 호출할 수 있으므로 시크릿으로 호출자를 검증한다. 두 가지를 모두 받는다.
+#   1) 헤더 방식  : POST /kakao          + X-Skill-Secret 헤더
+#   2) 경로 방식  : POST /kakao/<시크릿>  (헤더 설정을 지원하지 않는 클라이언트용)
+# 환경변수가 비어 있으면 검증을 건너뛴다(로컬 개발용).
 SECRET_HEADER = "X-Skill-Secret"
 SKILL_SECRET = os.environ.get("KAKAO_SKILL_SECRET", "").strip()
 if not SKILL_SECRET:
@@ -46,16 +48,19 @@ def _kakao_text(text: str) -> dict:
     }
 
 
-def _authorized(req) -> bool:
-    """시크릿 헤더 검증. 환경변수 미설정 시에는 통과시킨다."""
+def _authorized(req, token: str | None) -> bool:
+    """헤더 또는 URL 경로의 시크릿을 검증. 환경변수 미설정 시에는 통과시킨다."""
     if not SKILL_SECRET:
         return True
-    return hmac.compare_digest(req.headers.get(SECRET_HEADER, ""), SKILL_SECRET)
+    if hmac.compare_digest(req.headers.get(SECRET_HEADER, ""), SKILL_SECRET):
+        return True
+    return token is not None and hmac.compare_digest(token, SKILL_SECRET)
 
 
 @app.route("/kakao", methods=["POST"])
-def kakao_skill():
-    if not _authorized(request):
+@app.route("/kakao/<token>", methods=["POST"])
+def kakao_skill(token: str | None = None):
+    if not _authorized(request, token):
         print("[차단] 시크릿 헤더 불일치")
         return jsonify({"error": "unauthorized"}), 401
 
