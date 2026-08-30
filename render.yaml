@@ -1,0 +1,21 @@
+# Render Blueprint — 무료 플랜 배포 설정
+# 대시보드에서 New > Blueprint 를 고르고 이 저장소를 연결하면 자동으로 읽습니다.
+services:
+  - type: web
+    name: send-biz-card
+    runtime: python
+    plan: free
+    region: singapore          # Render 리전 중 한국에서 가장 가까움
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # 아래 3개는 sync:false → Render 대시보드에서 직접 입력 (저장소에 값이 남지 않음)
+      - key: GMAIL_SENDER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: KAKAO_SKILL_SECRET
+        sync: false

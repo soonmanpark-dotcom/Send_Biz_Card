@@ -1,5 +1,6 @@
 import re
 import os
+import hmac
 import yaml
 import threading
 from flask import Flask, request, jsonify
@@ -18,6 +19,17 @@ if os.environ.get("GMAIL_SENDER"):
 TRIGGER = config["bot"]["trigger_phrase"]
 PORT = int(os.environ.get("PORT", config["bot"]["port"]))
 
+# ── 스킬 서버 인증 ────────────────────────────────────────────────────────────
+# 공개 URL 은 누구나 호출할 수 있으므로, 카카오 스킬 설정에서 아래 헤더를 붙여 보내고
+# 서버가 그 값을 검증한다. 환경변수가 비어 있으면 검증을 건너뛴다(로컬 개발용).
+SECRET_HEADER = "X-Skill-Secret"
+SKILL_SECRET = os.environ.get("KAKAO_SKILL_SECRET", "").strip()
+if not SKILL_SECRET:
+    print(
+        f"[경고] {SECRET_HEADER} 검증이 꺼져 있습니다. "
+        "공개 배포 시 KAKAO_SKILL_SECRET 환경변수를 반드시 설정하세요."
+    )
+
 sender = EmailSender(config)
 app = Flask(__name__)
 
@@ -34,8 +46,19 @@ def _kakao_text(text: str) -> dict:
     }
 
 
+def _authorized(req) -> bool:
+    """시크릿 헤더 검증. 환경변수 미설정 시에는 통과시킨다."""
+    if not SKILL_SECRET:
+        return True
+    return hmac.compare_digest(req.headers.get(SECRET_HEADER, ""), SKILL_SECRET)
+
+
 @app.route("/kakao", methods=["POST"])
 def kakao_skill():
+    if not _authorized(request):
+        print("[차단] 시크릿 헤더 불일치")
+        return jsonify({"error": "unauthorized"}), 401
+
     body = request.get_json(force=True, silent=True) or {}
     utterance: str = (body.get("userRequest", {}).get("utterance") or "").strip()
 
