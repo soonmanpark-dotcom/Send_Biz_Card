@@ -99,7 +99,13 @@ def selftest(token: str):
     """Gmail 설정 진단용. 시크릿을 아는 경우에만 응답하고, 메일은 보내지 않는다."""
     if not _authorized(request, token):
         return jsonify({"error": "unauthorized"}), 401
-    return jsonify(sender.check())
+    info = sender.check()
+    # 지금 서버에 반영된 명함 문구. 내용 변경이 배포됐는지 확인용.
+    info["card"] = {
+        "name": config["card"]["name"],
+        "lines": config["card"].get("lines") or [],
+    }
+    return jsonify(info)
 
 
 @app.route("/health", methods=["GET"])
