@@ -6,6 +6,9 @@ import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+# Brevo 앞단 Cloudflare 가 기본 Python-urllib User-Agent 를 1010 으로 차단하므로 직접 지정한다.
+USER_AGENT = "SendBizCard/1.0"
+
 
 class EmailSender:
     def __init__(self, config: dict):
@@ -173,7 +176,12 @@ class EmailSender:
 
     def _brevo_get(self, url: str):
         req = urllib.request.Request(
-            url, headers={"api-key": self._api_key, "accept": "application/json"}
+            url,
+            headers={
+                "api-key": self._api_key,
+                "accept": "application/json",
+                "user-agent": USER_AGENT,
+            },
         )
         try:
             with urllib.request.urlopen(req, timeout=20) as res:
@@ -203,6 +211,7 @@ class EmailSender:
                 "api-key": self._api_key,
                 "content-type": "application/json",
                 "accept": "application/json",
+                "user-agent": USER_AGENT,
             },
             method="POST",
         )
