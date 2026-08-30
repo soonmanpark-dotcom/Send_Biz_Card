@@ -1,5 +1,8 @@
+import json
 import socket
 import smtplib
+import urllib.error
+import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -8,8 +11,18 @@ class EmailSender:
     def __init__(self, config: dict):
         self.card = config["card"]
         self.gmail = config["gmail"]
+        self.brevo = config.get("brevo") or {}
         self.subject = config["mail"]["subject"]
         self.html = self._build_html()
+
+    @property
+    def _api_key(self) -> str:
+        return (self.brevo.get("api_key") or "").strip()
+
+    @property
+    def mode(self) -> str:
+        """API 키가 있으면 Brevo(HTTPS), 없으면 기존 SMTP 방식을 쓴다."""
+        return "brevo" if self._api_key else "smtp"
 
     def _build_html(self) -> str:
         c = self.card
@@ -64,8 +77,12 @@ class EmailSender:
         로그인만 실패한 것인지(비밀번호 오류) 구분할 수 있게 한다.
         비밀번호 자체는 노출하지 않고 길이와 공백 포함 여부만 돌려준다.
         """
+        if self.mode == "brevo":
+            return self._check_brevo()
+
         pw = self.gmail["app_password"] or ""
         result = {
+            "mode": "smtp",
             "sender": self.gmail["sender_address"],
             "password_length": len(pw),
             "password_has_space": " " in pw,
@@ -124,7 +141,83 @@ class EmailSender:
             out[label] = tried
         return out
 
+    def _check_brevo(self) -> dict:
+        """Brevo API 키가 유효한지, 발신 주소가 등록·인증되어 있는지 확인한다."""
+        out = {
+            "mode": "brevo",
+            "sender": self.gmail["sender_address"],
+            "api_key_length": len(self._api_key),
+        }
+        account = self._brevo_get("https://api.brevo.com/v3/account")
+        if isinstance(account, dict):
+            out["api_key"] = "ok"
+            out["account_email"] = account.get("email")
+        else:
+            out["api_key"] = account
+            return out
+
+        senders = self._brevo_get("https://api.brevo.com/v3/senders")
+        if isinstance(senders, dict):
+            listed = senders.get("senders") or []
+            out["registered_senders"] = [
+                {"email": x.get("email"), "active": x.get("active")} for x in listed
+            ]
+            out["sender_is_registered"] = any(
+                (x.get("email") or "").lower() == self.gmail["sender_address"].lower()
+                and x.get("active")
+                for x in listed
+            )
+        else:
+            out["registered_senders"] = senders
+        return out
+
+    def _brevo_get(self, url: str):
+        req = urllib.request.Request(
+            url, headers={"api-key": self._api_key, "accept": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as res:
+                return json.loads(res.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            return f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}"
+        except Exception as e:
+            return f"{type(e).__name__}: {e}"
+
     def send(self, recipient: str) -> bool:
+        """설정에 따라 Brevo(HTTPS) 또는 SMTP 로 발송한다."""
+        if self.mode == "brevo":
+            return self._send_via_brevo(recipient)
+        return self._send_via_smtp(recipient)
+
+    def _send_via_brevo(self, recipient: str) -> bool:
+        payload = {
+            "sender": {"name": self.card["name"], "email": self.gmail["sender_address"]},
+            "to": [{"email": recipient}],
+            "subject": self.subject,
+            "htmlContent": self.html,
+        }
+        req = urllib.request.Request(
+            "https://api.brevo.com/v3/smtp/email",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "api-key": self._api_key,
+                "content-type": "application/json",
+                "accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as res:
+                return 200 <= res.status < 300
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            print(f"[EmailSender] Brevo 발송 실패 (HTTP {e.code}): {detail}")
+            return False
+        except Exception as e:
+            print(f"[EmailSender] Brevo 발송 실패: {type(e).__name__}: {e}")
+            return False
+
+    def _send_via_smtp(self, recipient: str) -> bool:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = self.subject
         msg["From"] = self.gmail["sender_address"]

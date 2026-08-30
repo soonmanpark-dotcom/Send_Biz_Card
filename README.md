@@ -10,10 +10,23 @@
 
 ## 클라우드 배포 (Render 무료 플랜)
 
-### 1. 사전 준비: Gmail 앱 비밀번호
+### 1. 사전 준비: Brevo API 키
 
-일반 Gmail 비밀번호로는 SMTP 로그인이 안 됩니다. 2단계 인증을 켠 뒤
-[Google 계정 > 앱 비밀번호](https://myaccount.google.com/apppasswords)에서 16자리를 발급받습니다.
+**Render 는 아웃바운드 SMTP(465/587) 를 차단합니다.** 같은 인스턴스에서 443 포트는
+정상 연결되지만 메일 포트는 패킷이 조용히 버려집니다(timeout). 그래서 클라우드에서는
+SMTP 대신 **HTTPS 로 보내는 메일 API** 를 써야 합니다.
+
+[Brevo](https://www.brevo.com) 무료 플랜(하루 300통)을 씁니다.
+
+1. 가입 후 **Senders** 에 발신 주소(`soonman.park@gmail.com`)를 등록하고 인증 메일 확인
+2. **SMTP & API → API Keys** 에서 키를 발급 (`xkeysib-` 로 시작)
+
+`BREVO_API_KEY` 환경변수가 설정되면 자동으로 Brevo 로 발송하고, 없으면 기존 SMTP 를
+그대로 씁니다. 로컬처럼 SMTP 가 열린 환경에서는 키 없이 예전 방식으로 동작합니다.
+
+> SMTP 방식을 계속 쓰려면 Gmail 2단계 인증을 켜고
+> [앱 비밀번호](https://myaccount.google.com/apppasswords) 16자리를 발급해
+> `GMAIL_APP_PASSWORD` 에 넣으면 됩니다.
 
 ### 2. 시크릿 값 생성
 
@@ -33,8 +46,8 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
    | 키 | 값 |
    |---|---|
-   | `GMAIL_SENDER` | 보내는 Gmail 주소 |
-   | `GMAIL_APP_PASSWORD` | 2단계에서 발급한 앱 비밀번호 16자리 |
+   | `GMAIL_SENDER` | 보내는 주소 (Brevo 에 등록·인증한 주소여야 함) |
+   | `BREVO_API_KEY` | 1번에서 발급한 Brevo API 키 |
    | `KAKAO_SKILL_SECRET` | 2번에서 생성한 시크릿 |
 
 4. 배포가 끝나면 `https://send-biz-card-xxxx.onrender.com` 형태의 URL이 나옵니다
@@ -98,8 +111,9 @@ python app.py            # http://localhost:5000
 
 | 키 | 필수 | 설명 |
 |---|---|---|
-| `GMAIL_SENDER` | 배포 시 필수 | 보내는 Gmail 주소. `config.yaml` 값을 덮어씀 |
-| `GMAIL_APP_PASSWORD` | 배포 시 필수 | Gmail 앱 비밀번호 |
+| `GMAIL_SENDER` | 배포 시 필수 | 보내는 주소. `config.yaml` 값을 덮어씀 |
+| `BREVO_API_KEY` | 배포 시 필수 | Brevo API 키. 있으면 Brevo(HTTPS), 없으면 SMTP 로 발송 |
+| `GMAIL_APP_PASSWORD` | SMTP 사용 시 | Gmail 앱 비밀번호 (SMTP 가 열린 환경에서만 유효) |
 | `KAKAO_SKILL_SECRET` | 배포 시 필수 | `X-Skill-Secret` 헤더 검증값. 미설정 시 검증 생략 |
 | `PORT` | 자동 | 클라우드 플랫폼이 주입. 로컬은 `config.yaml` 의 5000 |
 
@@ -109,3 +123,19 @@ python app.py            # http://localhost:5000
 
 `Procfile` 과 환경변수만 있으면 되므로 Railway, Fly.io, Cloud Run 에서도 그대로 동작합니다.
 Railway 는 콜드 스타트가 없어 4번(핑 설정)을 건너뛸 수 있지만 유료입니다.
+
+---
+
+## 발송 설정 진단
+
+메일이 도착하지 않을 때, 원인을 구분하는 진단 경로가 있습니다. **메일은 보내지 않습니다.**
+
+```
+GET https://<주소>/selftest/<시크릿>
+```
+
+- Brevo 모드: API 키 유효성, 계정 메일, **발신 주소 등록·인증 여부**(`sender_is_registered`)
+- SMTP 모드: 465/587 주소별 TCP 연결 결과와 로그인 결과
+
+비밀번호와 API 키 자체는 응답에 포함되지 않고 길이만 표시됩니다.
+`sender_is_registered` 가 `false` 면 Brevo 에서 발신 주소 인증을 마치지 않은 것입니다.

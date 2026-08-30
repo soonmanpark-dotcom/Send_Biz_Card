@@ -11,6 +11,9 @@ gmail:
   sender_address: "soonman.park@gmail.com"
   app_password: ""  # 환경변수 GMAIL_APP_PASSWORD 로 설정
 
+brevo:
+  api_key: ""  # 환경변수 BREVO_API_KEY 로 설정. 값이 있으면 SMTP 대신 Brevo 로 발송한다.
+
 mail:
   subject: "박순만 연락처 정보입니다"
 

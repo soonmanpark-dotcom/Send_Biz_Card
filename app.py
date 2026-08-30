@@ -15,6 +15,8 @@ if os.environ.get("GMAIL_APP_PASSWORD"):
     config["gmail"]["app_password"] = os.environ["GMAIL_APP_PASSWORD"]
 if os.environ.get("GMAIL_SENDER"):
     config["gmail"]["sender_address"] = os.environ["GMAIL_SENDER"]
+if os.environ.get("BREVO_API_KEY"):
+    config.setdefault("brevo", {})["api_key"] = os.environ["BREVO_API_KEY"]
 
 TRIGGER = config["bot"]["trigger_phrase"]
 PORT = int(os.environ.get("PORT", config["bot"]["port"]))
