@@ -1,3 +1,4 @@
+import socket
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -68,6 +69,7 @@ class EmailSender:
             "sender": self.gmail["sender_address"],
             "password_length": len(pw),
             "password_has_space": " " in pw,
+            "network": self._probe_network(),
             "attempts": [],
         }
         for label, port, use_ssl in (("465-SSL", 465, True), ("587-STARTTLS", 587, False)):
@@ -92,6 +94,35 @@ class EmailSender:
                 entry["connect"] = f"{type(e).__name__}: {e}"
             result["attempts"].append(entry)
         return result
+
+    @staticmethod
+    def _probe_network() -> dict:
+        """주소별로 직접 TCP 연결을 시도해, IPv6 문제인지 포트 차단인지 구분한다."""
+        out = {}
+        for label, host, port in (
+            ("smtp-465", "smtp.gmail.com", 465),
+            ("smtp-587", "smtp.gmail.com", 587),
+            ("https-443", "www.google.com", 443),
+        ):
+            tried = []
+            try:
+                addrs = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+            except Exception as e:
+                out[label] = {"resolve": f"{type(e).__name__}: {e}"}
+                continue
+            for family, _type, _proto, _canon, sockaddr in addrs:
+                fam = "IPv6" if family == socket.AF_INET6 else "IPv4"
+                sock = socket.socket(family, socket.SOCK_STREAM)
+                sock.settimeout(8)
+                try:
+                    sock.connect(sockaddr)
+                    tried.append(f"{fam} {sockaddr[0]} → ok")
+                except Exception as e:
+                    tried.append(f"{fam} {sockaddr[0]} → {type(e).__name__}: {e}")
+                finally:
+                    sock.close()
+            out[label] = tried
+        return out
 
     def send(self, recipient: str) -> bool:
         msg = MIMEMultipart("alternative")
