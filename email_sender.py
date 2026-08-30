@@ -56,6 +56,43 @@ class EmailSender:
 </body>
 </html>"""
 
+    def check(self) -> dict:
+        """SMTP 연결과 로그인만 시도해 설정 상태를 진단한다. 메일은 보내지 않는다.
+
+        포트 465/587 을 모두 시도해, 연결 자체가 막힌 것인지(호스팅 차단)
+        로그인만 실패한 것인지(비밀번호 오류) 구분할 수 있게 한다.
+        비밀번호 자체는 노출하지 않고 길이와 공백 포함 여부만 돌려준다.
+        """
+        pw = self.gmail["app_password"] or ""
+        result = {
+            "sender": self.gmail["sender_address"],
+            "password_length": len(pw),
+            "password_has_space": " " in pw,
+            "attempts": [],
+        }
+        for label, port, use_ssl in (("465-SSL", 465, True), ("587-STARTTLS", 587, False)):
+            entry = {"port": label}
+            try:
+                if use_ssl:
+                    server = smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=15)
+                else:
+                    server = smtplib.SMTP("smtp.gmail.com", port, timeout=15)
+                    server.starttls()
+                entry["connect"] = "ok"
+                try:
+                    server.login(self.gmail["sender_address"], pw)
+                    entry["login"] = "ok"
+                except Exception as e:
+                    entry["login"] = f"{type(e).__name__}: {e}"
+                try:
+                    server.quit()
+                except Exception:
+                    pass
+            except Exception as e:
+                entry["connect"] = f"{type(e).__name__}: {e}"
+            result["attempts"].append(entry)
+        return result
+
     def send(self, recipient: str) -> bool:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = self.subject

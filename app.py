@@ -92,6 +92,14 @@ def kakao_skill(token: str | None = None):
     return jsonify(_kakao_text(reply))
 
 
+@app.route("/selftest/<token>", methods=["GET"])
+def selftest(token: str):
+    """Gmail 설정 진단용. 시크릿을 아는 경우에만 응답하고, 메일은 보내지 않는다."""
+    if not _authorized(request, token):
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify(sender.check())
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return "OK", 200
