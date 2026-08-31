@@ -38,6 +38,7 @@ class EmailSender:
             )
             for i, line in enumerate(self.card.get("lines") or [])
         )
+        header = self._build_header(c["name"], sub_lines)
         return f"""<!DOCTYPE html>
 <html>
 <body style="margin:0;padding:20px;font-family:'Malgun Gothic',Arial,sans-serif;background:#f4f4f4;">
@@ -55,8 +56,7 @@ class EmailSender:
     </tr>
     <tr>
       <td style="background:#FEE500;padding:20px 28px;">
-        <div style="font-size:26px;font-weight:bold;color:#1a1a1a;letter-spacing:-0.5px;">{c['name']}</div>
-        {sub_lines}
+        {header}
       </td>
     </tr>
     <tr>
@@ -80,6 +80,32 @@ class EmailSender:
   </table>
 </body>
 </html>"""
+
+    def _build_header(self, name: str, sub_lines: str) -> str:
+        """노란 영역. photo_url 이 있으면 원형 사진을 왼쪽에 붙인 2단 구성으로 만든다.
+
+        메일 클라이언트 호환을 위해 table 레이아웃과 인라인 스타일만 쓴다.
+        사진이 없으면 기존과 같은 한 단 구성이다.
+        """
+        title = (
+            f'<div style="font-size:26px;font-weight:bold;color:#1a1a1a;'
+            f'letter-spacing:-0.5px;">{name}</div>{sub_lines}'
+        )
+        photo = (self.card.get("photo_url") or "").strip()
+        if not photo:
+            return title
+
+        size = int(self.card.get("photo_size") or 88)
+        return (
+            '<table style="border-collapse:collapse;"><tr>'
+            f'<td width="{size + 16}" style="padding:0 16px 0 0;vertical-align:middle;">'
+            f'<img src="{escape(photo)}" width="{size}" height="{size}" alt="{name}" '
+            f'style="display:block;width:{size}px;height:{size}px;border-radius:50%;'
+            'border:3px solid #ffffff;object-fit:cover;">'
+            '</td>'
+            f'<td style="vertical-align:middle;">{title}</td>'
+            '</tr></table>'
+        )
 
     def check(self) -> dict:
         """SMTP 연결과 로그인만 시도해 설정 상태를 진단한다. 메일은 보내지 않는다.
