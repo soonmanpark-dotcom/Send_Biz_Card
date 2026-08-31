@@ -10,6 +10,8 @@ card:
   # static/ 폴더에 파일을 올린 뒤 아래 줄의 주석(#)을 지우면 적용된다.
   photo_url: "https://send-biz-card.onrender.com/static/profile.jpg"
   photo_size: 88
+  # 사진 배치: stack(사진 위·글자 아래) / compact(사진 옆 이름만) / side(사진 옆 전부)
+  photo_layout: "side"
   phone: "010-5145-6239"
   kakao_id: "soonman22"
   email: "soonman.park@gmail.com"

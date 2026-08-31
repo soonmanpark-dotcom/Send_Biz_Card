@@ -82,30 +82,51 @@ class EmailSender:
 </html>"""
 
     def _build_header(self, name: str, sub_lines: str) -> str:
-        """노란 영역. photo_url 이 있으면 원형 사진을 왼쪽에 붙인 2단 구성으로 만든다.
+        """노란 영역 구성. photo_layout 으로 사진 배치를 고른다.
+
+        좁은 화면(모바일 메일 앱)에서는 가로 공간이 부족해, 사진 옆에 긴 글이
+        들어가면 이름과 주소가 어색하게 끊긴다. 그래서 배치를 선택할 수 있게 한다.
+
+          stack   : 사진 위, 글자는 전체 폭 (어떤 화면에서도 안전)
+          compact : 사진 옆에 이름만, 주소는 아래 전체 폭
+          side    : 사진 옆에 이름과 주소 모두 (넓은 화면 전용)
 
         메일 클라이언트 호환을 위해 table 레이아웃과 인라인 스타일만 쓴다.
-        사진이 없으면 기존과 같은 한 단 구성이다.
         """
-        title = (
-            f'<div style="font-size:26px;font-weight:bold;color:#1a1a1a;'
-            f'letter-spacing:-0.5px;">{name}</div>{sub_lines}'
-        )
         photo = (self.card.get("photo_url") or "").strip()
-        if not photo:
-            return title
 
-        size = int(self.card.get("photo_size") or 88)
-        return (
-            '<table style="border-collapse:collapse;"><tr>'
-            f'<td width="{size + 16}" style="padding:0 16px 0 0;vertical-align:middle;">'
+        def title(size: int = 26) -> str:
+            return (
+                f'<div style="font-size:{size}px;font-weight:bold;color:#1a1a1a;'
+                f'letter-spacing:-0.5px;line-height:1.25;">{name}</div>'
+            )
+
+        if not photo:
+            return title() + sub_lines
+
+        size = int(self.card.get("photo_size") or 72)
+        layout = (self.card.get("photo_layout") or "stack").strip()
+        img = (
             f'<img src="{escape(photo)}" width="{size}" height="{size}" alt="{name}" '
             f'style="display:block;width:{size}px;height:{size}px;border-radius:50%;'
             'border:3px solid #ffffff;object-fit:cover;">'
-            '</td>'
-            f'<td style="vertical-align:middle;">{title}</td>'
-            '</tr></table>'
         )
+
+        if layout == "side":
+            return (
+                '<table style="border-collapse:collapse;"><tr>'
+                f'<td width="{size + 16}" style="padding:0 16px 0 0;vertical-align:middle;">{img}</td>'
+                f'<td style="vertical-align:middle;">{title()}{sub_lines}</td>'
+                "</tr></table>"
+            )
+        if layout == "compact":
+            return (
+                '<table style="border-collapse:collapse;"><tr>'
+                f'<td width="{size + 14}" style="padding:0 14px 0 0;vertical-align:middle;">{img}</td>'
+                f'<td style="vertical-align:middle;">{title(21)}</td>'
+                f'</tr></table><div style="margin-top:12px;">{sub_lines}</div>'
+            )
+        return f'<div style="margin-bottom:12px;">{img}</div>{title()}{sub_lines}'
 
     def check(self) -> dict:
         """SMTP 연결과 로그인만 시도해 설정 상태를 진단한다. 메일은 보내지 않는다.
