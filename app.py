@@ -2,6 +2,7 @@ import re
 import os
 import hmac
 import json
+import secrets
 import hashlib
 import urllib.error
 import urllib.request
@@ -10,6 +11,7 @@ import yaml
 import threading
 from flask import Flask, request, jsonify, redirect
 from email_sender import EmailSender
+from rate_limit import RateLimiter
 
 # ── 설정 로드 ─────────────────────────────────────────────────────────────────
 with open("config.yaml", encoding="utf-8") as f:
@@ -47,9 +49,19 @@ if not SKILL_SECRET:
     )
 
 sender = EmailSender(config)
+limiter = RateLimiter(config.get("limits"))
 app = Flask(__name__)
 
 EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+
+LIMIT_MESSAGES = {
+    "recipient": "📮 방금 같은 주소로 명함을 보내드렸습니다.\n\n"
+                 "메일함을 확인해 주세요. 스팸함에 있을 수도 있습니다.",
+    "hour": "⏳ 지금 요청이 많아 잠시 쉬어가는 중입니다.\n\n"
+            "잠시 후 다시 시도해 주세요.",
+    "day": "⏳ 오늘 발송 한도에 도달했습니다.\n\n"
+           "내일 다시 시도해 주세요.",
+}
 
 
 def _kakao_text(text: str) -> dict:
@@ -93,6 +105,12 @@ def kakao_skill(token: str | None = None):
         ))
 
     email_addr = match.group()
+
+    blocked = limiter.check_and_record(email_addr)
+    if blocked:
+        print(f"[제한] {blocked} 한도 초과")
+        return jsonify(_kakao_text(LIMIT_MESSAGES[blocked]))
+
     print(f"[발송 시도] → {email_addr}")
 
     # 백그라운드에서 이메일 발송 (카카오 5초 타임아웃 방지)
@@ -113,6 +131,7 @@ def selftest(token: str):
         return jsonify({"error": "unauthorized"}), 401
     info = sender.check()
     # 지금 서버에 반영된 명함 문구. 내용 변경이 배포됐는지 확인용.
+    info["usage"] = limiter.snapshot()
     info["card"] = {
         "name": config["card"]["name"],
         "lines": config["card"].get("lines") or [],
@@ -315,6 +334,31 @@ def oauth_callback():
         f'padding:10px">{refresh}</textarea>'
         "<p style='color:#a00'>이 값은 비밀번호와 같습니다. 다른 곳에 공유하지 마세요. "
         "이 화면을 닫으면 다시 볼 수 없으며, 필요하면 인증을 처음부터 다시 하면 됩니다.</p>",
+    )
+
+
+@app.route("/newsecret/<token>", methods=["GET"])
+def new_secret(token: str):
+    """새 시크릿 값을 만들어 보여준다. 서버 설정을 바꾸지는 않는다.
+
+    현재 시크릿을 아는 경우에만 열리며, 교체는 환경변수와 카카오 설정을
+    직접 바꿔야 완료된다.
+    """
+    if not _authorized(request, token):
+        return _page("권한 없음", "<h2>접근 권한이 없습니다.</h2>", 401)
+
+    value = secrets.token_urlsafe(32)
+    return _page(
+        "새 시크릿",
+        "<h2>새 시크릿이 생성되었습니다</h2>"
+        "<p>아래 값을 복사해 두 곳을 모두 바꾸면 교체가 끝납니다.</p>"
+        f'<textarea readonly rows="3" style="width:100%;font-family:monospace;'
+        f'font-size:14px;padding:10px">{value}</textarea>'
+        "<ol><li>Render → Environment → <b>KAKAO_SKILL_SECRET</b> 값을 이 값으로 수정 → Save</li>"
+        "<li>카카오 i 오픈빌더 → 스킬 서버 URL 끝부분을 이 값으로 수정 → 저장 → <b>배포</b></li></ol>"
+        "<p style='color:#a00'>두 곳을 모두 바꿔야 챗봇이 정상 작동합니다. "
+        "이 화면을 닫으면 값을 다시 볼 수 없으며, 필요하면 이 주소를 다시 열어 "
+        "새 값을 만들면 됩니다.</p>",
     )
 
 

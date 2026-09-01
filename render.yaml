@@ -7,7 +7,8 @@ services:
     plan: free
     region: singapore          # Render 리전 중 한국에서 가장 가까움
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60
+    # 워커가 여러 개면 발송 한도가 워커별로 갈라지므로 1개로 고정한다.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 60
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
