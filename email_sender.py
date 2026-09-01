@@ -242,34 +242,23 @@ class EmailSender:
         return out
 
     def _check_gmail_api(self) -> dict:
-        """리프레시 토큰이 살아있는지, 어떤 계정으로 보내게 되는지 확인한다."""
-        out = {"mode": "gmail_api", "sender": self.gmail["sender_address"]}
+        """리프레시 토큰이 아직 유효한지 확인한다.
+
+        권한 범위가 gmail.send 하나뿐이라 계정 정보 조회(users.getProfile)는
+        403 이 되는 것이 정상이다. 메일함을 읽을 수 없다는 뜻이므로 확인하지 않는다.
+        """
+        out = {
+            "mode": "gmail_api",
+            "sender": self.gmail["sender_address"],
+            "scope": "gmail.send (발송 전용, 메일 읽기 불가)",
+        }
         try:
-            token = self._google_access_token()
+            self._google_access_token()
+            out["auth"] = "ok"
         except urllib.error.HTTPError as e:
             out["auth"] = f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}"
-            return out
         except Exception as e:
             out["auth"] = f"{type(e).__name__}: {e}"
-            return out
-        out["auth"] = "ok"
-
-        req = urllib.request.Request(
-            "https://gmail.googleapis.com/gmail/v1/users/me/profile",
-            headers={"authorization": f"Bearer {token}", "user-agent": USER_AGENT},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=20) as res:
-                data = json.loads(res.read().decode())
-            out["gmail_account"] = data.get("emailAddress")
-            out["sender_matches_account"] = (
-                (data.get("emailAddress") or "").lower()
-                == self.gmail["sender_address"].lower()
-            )
-        except urllib.error.HTTPError as e:
-            out["profile"] = f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}"
-        except Exception as e:
-            out["profile"] = f"{type(e).__name__}: {e}"
         return out
 
     def _check_brevo(self) -> dict:
