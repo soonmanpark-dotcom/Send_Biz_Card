@@ -120,6 +120,102 @@ def selftest(token: str):
     return jsonify(info)
 
 
+# ── 안내 페이지 ───────────────────────────────────────────────────────
+# 구글 OAuth 앱을 프로덕션으로 게시하려면 홈페이지·개인정보처리방침·이용약관
+# 주소가 필요하다. 승인된 도메인이 이 서버이므로 여기서 함께 제공한다.
+_PAGE_CSS = (
+    "font-family:system-ui,'Malgun Gothic',sans-serif;max-width:720px;"
+    "margin:48px auto;padding:0 20px;line-height:1.75;color:#222"
+)
+
+
+def _doc(title: str, body: str):
+    return (
+        f'<!doctype html><meta charset="utf-8">'
+        f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{title}</title>"
+        f'<body style="{_PAGE_CSS}">{body}'
+        '<hr style="margin:40px 0 16px;border:none;border-top:1px solid #ddd">'
+        '<p style="font-size:13px;color:#777">'
+        '<a href="/" style="color:#0077cc">홈</a> · '
+        '<a href="/privacy" style="color:#0077cc">개인정보처리방침</a> · '
+        '<a href="/terms" style="color:#0077cc">이용약관</a></p>'
+        "</body>",
+        200,
+        {"Content-Type": "text/html; charset=utf-8"},
+    )
+
+
+@app.route("/", methods=["GET"])
+def home():
+    return _doc(
+        "SendBizCard",
+        "<h1>SendBizCard</h1>"
+        "<p>카카오톡 챗봇으로 이메일 주소를 받아, 운영자의 명함(연락처) 정보를 "
+        "해당 주소로 한 번 보내주는 개인용 서비스입니다.</p>"
+        "<h2>이용 방법</h2>"
+        "<p>카카오톡 챗봇에 받을 이메일 주소를 함께 입력하면, 그 주소로 명함 메일이 발송됩니다.</p>"
+        "<h2>운영자</h2>"
+        "<p>박순만 · <a href='mailto:soonman.park@gmail.com' style='color:#0077cc'>"
+        "soonman.park@gmail.com</a></p>",
+    )
+
+
+@app.route("/privacy", methods=["GET"])
+def privacy():
+    return _doc(
+        "개인정보처리방침 — SendBizCard",
+        "<h1>개인정보처리방침</h1>"
+        "<p>SendBizCard(이하 '서비스')는 운영자 개인이 명함 정보를 전달할 목적으로 "
+        "운영하는 비영리 서비스입니다.</p>"
+        "<h2>1. 수집하는 정보</h2>"
+        "<p>이용자가 챗봇 대화에 직접 입력한 <b>수신 이메일 주소</b> 하나만 사용합니다. "
+        "이름, 전화번호 등 다른 개인정보는 수집하지 않습니다.</p>"
+        "<h2>2. 이용 목적</h2>"
+        "<p>입력된 주소로 운영자의 명함(이름·소속·연락처) 메일을 <b>1회 발송</b>하는 "
+        "목적으로만 사용합니다. 광고나 마케팅 메일을 보내지 않습니다.</p>"
+        "<h2>3. 보관 및 파기</h2>"
+        "<p>수신 주소를 데이터베이스에 저장하지 않습니다. 발송 처리 과정에서 서버 "
+        "실행 로그에 일시적으로 기록될 수 있으며, 이 로그는 서버가 재시작되면 삭제됩니다.</p>"
+        "<h2>4. 제3자 제공 및 처리 위탁</h2>"
+        "<p>메일 발송을 위해 아래 서비스를 통해 전송됩니다. 발송 외의 목적으로 "
+        "제3자에게 제공하지 않습니다.</p>"
+        "<ul><li>Google LLC (Gmail API) — 메일 발송</li>"
+        "<li>Sendinblue SAS(Brevo) — 대체 발송 수단으로 사용될 수 있음</li>"
+        "<li>Render Services, Inc. — 서비스 호스팅</li></ul>"
+        "<h2>5. 구글 계정 정보의 사용</h2>"
+        "<p>이 서비스는 운영자 본인의 Gmail 계정으로 메일을 보내기 위해 "
+        "<code>gmail.send</code> 권한만 사용합니다. 이 권한은 메일 발송에만 쓰이며, "
+        "운영자의 메일을 읽거나 삭제하지 않고, 메일 내용을 제3자와 공유하지 않습니다. "
+        "구글에서 받은 데이터는 다른 목적으로 사용하거나 전송하지 않습니다.</p>"
+        "<h2>6. 문의</h2>"
+        "<p><a href='mailto:soonman.park@gmail.com' style='color:#0077cc'>"
+        "soonman.park@gmail.com</a></p>",
+    )
+
+
+@app.route("/terms", methods=["GET"])
+def terms():
+    return _doc(
+        "이용약관 — SendBizCard",
+        "<h1>이용약관</h1>"
+        "<h2>1. 서비스 성격</h2>"
+        "<p>SendBizCard는 운영자 개인이 무료로 제공하는 비영리 서비스입니다. "
+        "운영자의 명함 정보를 요청한 이메일 주소로 전달합니다.</p>"
+        "<h2>2. 이용자의 의무</h2>"
+        "<p>이용자는 본인의 이메일 주소 또는 발송에 동의한 주소만 입력해야 합니다. "
+        "타인에게 원치 않는 메일을 보내는 용도로 사용해서는 안 됩니다.</p>"
+        "<h2>3. 서비스의 변경과 중단</h2>"
+        "<p>운영자는 사전 통지 없이 서비스를 변경하거나 중단할 수 있습니다.</p>"
+        "<h2>4. 책임의 한계</h2>"
+        "<p>서비스는 있는 그대로 제공되며, 메일 발송의 지연이나 실패에 대해 "
+        "법이 허용하는 범위에서 책임을 지지 않습니다.</p>"
+        "<h2>5. 문의</h2>"
+        "<p><a href='mailto:soonman.park@gmail.com' style='color:#0077cc'>"
+        "soonman.park@gmail.com</a></p>",
+    )
+
+
 # ── Gmail API 인증 도우미 ─────────────────────────────────────────────
 # 리프레시 토큰을 받기 위한 1회용 절차. 시크릿을 아는 경우에만 시작할 수 있다.
 GOOGLE_SCOPE = "https://www.googleapis.com/auth/gmail.send"
