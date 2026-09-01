@@ -14,7 +14,8 @@ card:
   photo_layout: "compact"
   phone: "010-5145-6239"
   kakao_id: "soonman22"
-  email: "soonman.park@gmail.com"
+  email: "smpark@yuhs.ac"
+  homepage: "https://stirring-elf.netlify.app/"
 
 gmail:
   sender_address: "soonman.park@gmail.com"

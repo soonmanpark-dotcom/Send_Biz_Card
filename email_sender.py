@@ -39,6 +39,7 @@ class EmailSender:
             for i, line in enumerate(self.card.get("lines") or [])
         )
         header = self._build_header(c["name"], sub_lines)
+        contact_rows = self._build_contact_rows()
         return f"""<!DOCTYPE html>
 <html>
 <body style="margin:0;padding:20px;font-family:'Malgun Gothic',Arial,sans-serif;background:#f4f4f4;">
@@ -62,24 +63,44 @@ class EmailSender:
     <tr>
       <td style="padding:20px 28px;">
         <table style="width:100%;border-collapse:collapse;font-size:13px;color:#444;">
-          <tr>
-            <td style="padding:6px 0;width:76px;color:#888;">전화</td>
-            <td style="padding:6px 0;">{c['phone']}</td>
-          </tr>
-          <tr>
-            <td style="padding:6px 0;color:#888;">카카오 ID</td>
-            <td style="padding:6px 0;">{c['kakao_id']}</td>
-          </tr>
-          <tr>
-            <td style="padding:6px 0;color:#888;">이메일</td>
-            <td style="padding:6px 0;"><a href="mailto:{c['email']}" style="color:#0077cc;">{c['email']}</a></td>
-          </tr>
+{contact_rows}
         </table>
       </td>
     </tr>
   </table>
 </body>
 </html>"""
+
+    def _build_contact_rows(self) -> str:
+        """연락처 표의 각 줄. 값이 비어 있는 항목은 아예 표시하지 않는다."""
+        c = self.card
+        rows = []
+
+        def row(label: str, value: str, first: bool = False) -> str:
+            width = ' width="76"' if first else ""
+            return (
+                f'<tr><td style="padding:6px 0;color:#888;"{width}>{escape(label)}</td>'
+                f'<td style="padding:6px 0;">{value}</td></tr>'
+            )
+
+        if c.get("phone"):
+            rows.append(row("전화", escape(str(c["phone"])), first=True))
+        if c.get("kakao_id"):
+            rows.append(row("카카오 ID", escape(str(c["kakao_id"]))))
+        if c.get("email"):
+            mail = escape(str(c["email"]))
+            rows.append(row("이메일", f'<a href="mailto:{mail}" style="color:#0077cc;">{mail}</a>'))
+        if c.get("homepage"):
+            url = str(c["homepage"]).strip()
+            # 링크 글자는 보기 좋게 http(s):// 와 끝 슬래시를 뗀 형태로 보여준다.
+            label = url.split("://", 1)[-1].rstrip("/")
+            rows.append(
+                row(
+                    "홈페이지",
+                    f'<a href="{escape(url)}" style="color:#0077cc;">{escape(label)}</a>',
+                )
+            )
+        return "".join(rows)
 
     def _build_header(self, name: str, sub_lines: str) -> str:
         """노란 영역 구성. photo_layout 으로 사진 배치를 고른다.
