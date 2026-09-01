@@ -21,6 +21,14 @@ gmail:
   sender_address: "soonman.park@gmail.com"
   app_password: ""  # 환경변수 GMAIL_APP_PASSWORD 로 설정
 
+# Gmail API 로 보내면 보낸사람이 실제 Gmail 주소로 표시된다(중계 서비스 주소가 아님).
+# 세 값이 모두 채워지면 Brevo 대신 Gmail API 를 사용한다.
+gmail_api:
+  client_id: ""      # 환경변수 GOOGLE_CLIENT_ID
+  client_secret: ""  # 환경변수 GOOGLE_CLIENT_SECRET
+  refresh_token: ""  # 환경변수 GOOGLE_REFRESH_TOKEN
+  redirect_uri: "https://send-biz-card.onrender.com/oauth/callback"
+
 brevo:
   api_key: ""  # 환경변수 BREVO_API_KEY 로 설정. 값이 있으면 SMTP 대신 Brevo 로 발송한다.
 

@@ -1,3 +1,4 @@
+import base64
 import json
 import socket
 import smtplib
@@ -5,7 +6,9 @@ import urllib.error
 import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from html import escape
+from urllib.parse import urlencode
 
 # Brevo 앞단 Cloudflare 가 기본 Python-urllib User-Agent 를 1010 으로 차단하므로 직접 지정한다.
 USER_AGENT = "SendBizCard/1.0"
@@ -16,6 +19,7 @@ class EmailSender:
         self.card = config["card"]
         self.gmail = config["gmail"]
         self.brevo = config.get("brevo") or {}
+        self.gmail_api = config.get("gmail_api") or {}
         self.subject = config["mail"]["subject"]
         self.html = self._build_html()
 
@@ -24,8 +28,23 @@ class EmailSender:
         return (self.brevo.get("api_key") or "").strip()
 
     @property
+    def _google(self) -> dict:
+        return self.gmail_api
+
+    @property
+    def _google_ready(self) -> bool:
+        g = self.gmail_api
+        return all((g.get("client_id"), g.get("client_secret"), g.get("refresh_token")))
+
+    @property
     def mode(self) -> str:
-        """API 키가 있으면 Brevo(HTTPS), 없으면 기존 SMTP 방식을 쓴다."""
+        """Gmail API > Brevo > SMTP 순으로 사용 가능한 방식을 고른다.
+
+        Gmail API 는 보낸사람이 실제 Gmail 주소로 나가고 HTTPS 를 쓰므로
+        SMTP 가 막힌 호스팅에서도 동작한다.
+        """
+        if self._google_ready:
+            return "gmail_api"
         return "brevo" if self._api_key else "smtp"
 
     def _build_html(self) -> str:
@@ -156,6 +175,8 @@ class EmailSender:
         로그인만 실패한 것인지(비밀번호 오류) 구분할 수 있게 한다.
         비밀번호 자체는 노출하지 않고 길이와 공백 포함 여부만 돌려준다.
         """
+        if self.mode == "gmail_api":
+            return self._check_gmail_api()
         if self.mode == "brevo":
             return self._check_brevo()
 
@@ -220,6 +241,37 @@ class EmailSender:
             out[label] = tried
         return out
 
+    def _check_gmail_api(self) -> dict:
+        """리프레시 토큰이 살아있는지, 어떤 계정으로 보내게 되는지 확인한다."""
+        out = {"mode": "gmail_api", "sender": self.gmail["sender_address"]}
+        try:
+            token = self._google_access_token()
+        except urllib.error.HTTPError as e:
+            out["auth"] = f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}"
+            return out
+        except Exception as e:
+            out["auth"] = f"{type(e).__name__}: {e}"
+            return out
+        out["auth"] = "ok"
+
+        req = urllib.request.Request(
+            "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+            headers={"authorization": f"Bearer {token}", "user-agent": USER_AGENT},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as res:
+                data = json.loads(res.read().decode())
+            out["gmail_account"] = data.get("emailAddress")
+            out["sender_matches_account"] = (
+                (data.get("emailAddress") or "").lower()
+                == self.gmail["sender_address"].lower()
+            )
+        except urllib.error.HTTPError as e:
+            out["profile"] = f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}"
+        except Exception as e:
+            out["profile"] = f"{type(e).__name__}: {e}"
+        return out
+
     def _check_brevo(self) -> dict:
         """Brevo API 키가 유효한지, 발신 주소가 등록·인증되어 있는지 확인한다."""
         out = {
@@ -269,7 +321,10 @@ class EmailSender:
 
     def send(self, recipient: str) -> bool:
         """설정에 따라 Brevo(HTTPS) 또는 SMTP 로 발송한다."""
-        if self.mode == "brevo":
+        mode = self.mode
+        if mode == "gmail_api":
+            return self._send_via_gmail_api(recipient)
+        if mode == "brevo":
             return self._send_via_brevo(recipient)
         return self._send_via_smtp(recipient)
 
@@ -302,12 +357,74 @@ class EmailSender:
             print(f"[EmailSender] Brevo 발송 실패: {type(e).__name__}: {e}")
             return False
 
-    def _send_via_smtp(self, recipient: str) -> bool:
+    def _build_message(self, recipient: str) -> MIMEMultipart:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = self.subject
-        msg["From"] = self.gmail["sender_address"]
+        # formataddr 이 한글 표시 이름을 알아서 인코딩한다.
+        msg["From"] = formataddr(
+            (self.card["name"], self.gmail["sender_address"]), charset="utf-8"
+        )
         msg["To"] = recipient
         msg.attach(MIMEText(self.html, "html", "utf-8"))
+        return msg
+
+    # ── Gmail API ─────────────────────────────────────────────────────
+    def _google_access_token(self) -> str:
+        """리프레시 토큰으로 단기 액세스 토큰을 받아온다."""
+        g = self.gmail_api
+        data = urlencode({
+            "client_id": g["client_id"],
+            "client_secret": g["client_secret"],
+            "refresh_token": g["refresh_token"],
+            "grant_type": "refresh_token",
+        }).encode()
+        req = urllib.request.Request(
+            "https://oauth2.googleapis.com/token",
+            data=data,
+            headers={"content-type": "application/x-www-form-urlencoded",
+                     "user-agent": USER_AGENT},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=20) as res:
+            return json.loads(res.read().decode())["access_token"]
+
+    def _send_via_gmail_api(self, recipient: str) -> bool:
+        try:
+            token = self._google_access_token()
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            print(f"[EmailSender] Gmail 인증 실패 (HTTP {e.code}): {detail}")
+            return False
+        except Exception as e:
+            print(f"[EmailSender] Gmail 인증 실패: {type(e).__name__}: {e}")
+            return False
+
+        raw = base64.urlsafe_b64encode(
+            self._build_message(recipient).as_bytes()
+        ).decode()
+        req = urllib.request.Request(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            data=json.dumps({"raw": raw}).encode(),
+            headers={
+                "authorization": f"Bearer {token}",
+                "content-type": "application/json",
+                "user-agent": USER_AGENT,
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=25) as res:
+                return 200 <= res.status < 300
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            print(f"[EmailSender] Gmail 발송 실패 (HTTP {e.code}): {detail}")
+            return False
+        except Exception as e:
+            print(f"[EmailSender] Gmail 발송 실패: {type(e).__name__}: {e}")
+            return False
+
+    def _send_via_smtp(self, recipient: str) -> bool:
+        msg = self._build_message(recipient)
 
         try:
             with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:

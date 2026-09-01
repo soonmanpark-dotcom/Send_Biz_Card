@@ -1,9 +1,14 @@
 import re
 import os
 import hmac
+import json
+import hashlib
+import urllib.error
+import urllib.request
+from urllib.parse import urlencode
 import yaml
 import threading
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 from email_sender import EmailSender
 
 # ── 설정 로드 ─────────────────────────────────────────────────────────────────
@@ -17,6 +22,13 @@ if os.environ.get("GMAIL_SENDER"):
     config["gmail"]["sender_address"] = os.environ["GMAIL_SENDER"]
 if os.environ.get("BREVO_API_KEY"):
     config.setdefault("brevo", {})["api_key"] = os.environ["BREVO_API_KEY"]
+for _env, _key in (
+    ("GOOGLE_CLIENT_ID", "client_id"),
+    ("GOOGLE_CLIENT_SECRET", "client_secret"),
+    ("GOOGLE_REFRESH_TOKEN", "refresh_token"),
+):
+    if os.environ.get(_env):
+        config.setdefault("gmail_api", {})[_key] = os.environ[_env]
 
 TRIGGER = config["bot"]["trigger_phrase"]
 PORT = int(os.environ.get("PORT", config["bot"]["port"]))
@@ -106,6 +118,108 @@ def selftest(token: str):
         "lines": config["card"].get("lines") or [],
     }
     return jsonify(info)
+
+
+# ── Gmail API 인증 도우미 ─────────────────────────────────────────────
+# 리프레시 토큰을 받기 위한 1회용 절차. 시크릿을 아는 경우에만 시작할 수 있다.
+GOOGLE_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+
+
+def _oauth_state() -> str:
+    """시크릿에서 파생한 고정 state. 시크릿 자체는 노출하지 않는다."""
+    return hashlib.sha256(f"{SKILL_SECRET}:oauth".encode()).hexdigest()
+
+
+def _page(title: str, body: str, code: int = 200):
+    return (
+        f'<!doctype html><meta charset="utf-8"><title>{title}</title>'
+        '<body style="font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;'
+        f'padding:0 20px;line-height:1.7;color:#222">{body}</body>',
+        code,
+        {"Content-Type": "text/html; charset=utf-8"},
+    )
+
+
+@app.route("/oauth/start/<token>", methods=["GET"])
+def oauth_start(token: str):
+    if not _authorized(request, token):
+        return _page("권한 없음", "<h2>접근 권한이 없습니다.</h2>", 401)
+
+    g = config.get("gmail_api") or {}
+    if not g.get("client_id"):
+        return _page(
+            "설정 필요",
+            "<h2>먼저 GOOGLE_CLIENT_ID 와 GOOGLE_CLIENT_SECRET 를 설정해 주세요.</h2>"
+            "<p>Render 의 Environment 에 두 값을 넣고 저장한 뒤 다시 시도하세요.</p>",
+            400,
+        )
+
+    params = {
+        "client_id": g["client_id"],
+        "redirect_uri": g.get("redirect_uri", ""),
+        "response_type": "code",
+        "scope": GOOGLE_SCOPE,
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": _oauth_state(),
+    }
+    return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params))
+
+
+@app.route("/oauth/callback", methods=["GET"])
+def oauth_callback():
+    if request.args.get("state") != _oauth_state():
+        return _page("요청 불일치", "<h2>요청이 올바르지 않습니다.</h2>", 400)
+
+    err = request.args.get("error")
+    if err:
+        return _page("인증 취소됨", f"<h2>구글에서 인증이 취소되었습니다.</h2><p>{err}</p>", 400)
+
+    code = request.args.get("code")
+    g = config.get("gmail_api") or {}
+    data = urlencode({
+        "code": code or "",
+        "client_id": g.get("client_id", ""),
+        "client_secret": g.get("client_secret", ""),
+        "redirect_uri": g.get("redirect_uri", ""),
+        "grant_type": "authorization_code",
+    }).encode()
+    req = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=data,
+        headers={"content-type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as res:
+            payload = json.loads(res.read().decode())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:400]
+        return _page("토큰 발급 실패", f"<h2>토큰 발급에 실패했습니다.</h2><pre>{detail}</pre>", 400)
+    except Exception as e:
+        return _page("토큰 발급 실패", f"<h2>토큰 발급에 실패했습니다.</h2><pre>{e}</pre>", 400)
+
+    refresh = payload.get("refresh_token")
+    if not refresh:
+        return _page(
+            "리프레시 토큰 없음",
+            "<h2>리프레시 토큰이 오지 않았습니다.</h2>"
+            "<p>이미 승인한 적이 있는 계정입니다. "
+            "<a href='https://myaccount.google.com/permissions'>구글 계정의 앱 권한</a>에서 "
+            "이 앱의 액세스를 삭제한 뒤 처음부터 다시 시도해 주세요.</p>",
+            400,
+        )
+
+    return _page(
+        "인증 완료",
+        "<h2>✅ 인증이 완료되었습니다</h2>"
+        "<p>아래 값을 복사해서 Render 의 Environment 에 "
+        "<b>GOOGLE_REFRESH_TOKEN</b> 이라는 이름으로 넣고 저장하세요.</p>"
+        f'<textarea readonly rows="4" style="width:100%;font-family:monospace;font-size:13px;'
+        f'padding:10px">{refresh}</textarea>'
+        "<p style='color:#a00'>이 값은 비밀번호와 같습니다. 다른 곳에 공유하지 마세요. "
+        "이 화면을 닫으면 다시 볼 수 없으며, 필요하면 인증을 처음부터 다시 하면 됩니다.</p>",
+    )
 
 
 @app.route("/health", methods=["GET"])

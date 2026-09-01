@@ -139,3 +139,42 @@ GET https://<주소>/selftest/<시크릿>
 
 비밀번호와 API 키 자체는 응답에 포함되지 않고 길이만 표시됩니다.
 `sender_is_registered` 가 `false` 면 Brevo 에서 발신 주소 인증을 마치지 않은 것입니다.
+
+---
+
+## Gmail API 로 발송하기 (보낸사람을 실제 Gmail 주소로)
+
+Brevo 는 무료 메일 도메인(gmail.com 등)을 발신 주소로 쓰면 DMARC 때문에
+보낸사람을 `@<id>.brevosend.com` 으로 바꿔서 내보낸다. 실제 Gmail 주소를
+그대로 보이게 하려면 Gmail API 를 쓴다. HTTPS 를 쓰므로 SMTP 가 막힌
+호스팅에서도 동작한다.
+
+### 1. 구글 클라우드 설정
+
+1. [console.cloud.google.com](https://console.cloud.google.com) 에서 프로젝트 생성
+2. **API 및 서비스 → 라이브러리** 에서 **Gmail API** 사용 설정
+3. **OAuth 동의 화면**: External, 테스트 사용자에 본인 Gmail 추가
+4. **사용자 인증 정보 → OAuth 클라이언트 ID → 웹 애플리케이션**
+   - 승인된 리디렉션 URI: `https://<주소>/oauth/callback`
+5. 클라이언트 ID 와 보안 비밀번호를 Render 환경변수에 넣는다
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+
+### 2. 리프레시 토큰 받기
+
+브라우저로 아래 주소에 접속해 구글 로그인·동의를 마치면 화면에 값이 나온다.
+
+```
+https://<주소>/oauth/start/<시크릿>
+```
+
+그 값을 `GOOGLE_REFRESH_TOKEN` 환경변수로 넣고 저장하면 자동으로 Gmail API 로 전환된다.
+
+### 발송 방식 우선순위
+
+| 조건 | 사용 방식 |
+|---|---|
+| `GOOGLE_*` 세 값이 모두 있음 | Gmail API (보낸사람 = 실제 Gmail 주소) |
+| `BREVO_API_KEY` 있음 | Brevo |
+| 둘 다 없음 | SMTP |
+
+`/selftest/<시크릿>` 이 현재 어떤 방식인지와 인증 상태를 알려준다.
