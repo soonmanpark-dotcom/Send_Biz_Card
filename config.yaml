@@ -37,9 +37,9 @@ mail:
 
 # 발송 횟수 제한. 시크릿이 유출되더라도 피해 규모를 한정한다.
 limits:
-  per_recipient_per_hour: 3   # 같은 주소로 시간당 최대 발송 수
-  total_per_hour: 20          # 전체 시간당 최대 발송 수
-  total_per_day: 50           # 전체 하루 최대 발송 수
+  per_recipient_per_hour: 5   # 같은 주소로 시간당 최대 발송 수
+  total_per_hour: 50          # 전체 시간당 최대 발송 수
+  total_per_day: 100           # 전체 하루 최대 발송 수
 
 bot:
   trigger_phrase: "내 명함 정보 보내줘"
