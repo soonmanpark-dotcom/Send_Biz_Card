@@ -21,6 +21,7 @@ class EmailSender:
         self.brevo = config.get("brevo") or {}
         self.gmail_api = config.get("gmail_api") or {}
         self.subject = config["mail"]["subject"]
+        self.greeting = config["mail"].get("greeting") or []
         self.html = self._build_html()
 
     @property
@@ -57,6 +58,10 @@ class EmailSender:
             )
             for i, line in enumerate(self.card.get("lines") or [])
         )
+        # 인사말. 한 줄씩 <br> 로 이어 붙인다.
+        greeting = "<br>".join(
+            escape(str(line)) for line in (self.greeting or [])
+        )
         card_row = self._build_card_row(self._build_header(c["name"], sub_lines))
         contact_rows = self._build_contact_rows()
         return f"""<!DOCTYPE html>
@@ -67,10 +72,7 @@ class EmailSender:
     <tr>
       <td style="padding:24px 28px;border-bottom:1px solid #f0f0f0;">
         <p style="margin:0 0 8px 0;font-size:14px;color:#444;line-height:1.7;">
-          안녕하세요. 반갑습니다.<br>
-          제 간단한 연락처 정보는 아래와 같습니다.<br>
-          앞으로 소통하시면서 좋은 관계 유지하기를 희망합니다.<br>
-          감사합니다.
+          {greeting}
         </p>
       </td>
     </tr>
