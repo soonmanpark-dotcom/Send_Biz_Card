@@ -57,7 +57,7 @@ class EmailSender:
             )
             for i, line in enumerate(self.card.get("lines") or [])
         )
-        header = self._build_header(c["name"], sub_lines)
+        card_row = self._build_card_row(self._build_header(c["name"], sub_lines))
         contact_rows = self._build_contact_rows()
         return f"""<!DOCTYPE html>
 <html>
@@ -74,11 +74,7 @@ class EmailSender:
         </p>
       </td>
     </tr>
-    <tr>
-      <td style="background:#FEE500;padding:20px 28px;">
-        {header}
-      </td>
-    </tr>
+    {card_row}
     <tr>
       <td style="padding:20px 28px;">
         <table style="width:100%;border-collapse:collapse;font-size:13px;color:#444;">
@@ -89,6 +85,25 @@ class EmailSender:
   </table>
 </body>
 </html>"""
+
+    def _build_card_row(self, header: str) -> str:
+        """명함 영역. card_image_url 이 있으면 명함 이미지 한 장으로 대체한다.
+
+        이미지가 없으면 기존의 노란 배경 + 이름·소속 구성을 그대로 쓴다.
+        """
+        image = (self.card.get("card_image_url") or "").strip()
+        if image:
+            return (
+                '<tr><td style="padding:0;line-height:0;">'
+                f'<img src="{escape(image)}" alt="{escape(str(self.card["name"]))} 명함" '
+                'width="480" style="display:block;width:100%;max-width:480px;'
+                'height:auto;border:0;">'
+                "</td></tr>"
+            )
+        return (
+            '<tr><td style="background:#FEE500;padding:20px 28px;">'
+            f"{header}</td></tr>"
+        )
 
     def _build_contact_rows(self) -> str:
         """연락처 표의 각 줄. 값이 비어 있는 항목은 아예 표시하지 않는다."""
